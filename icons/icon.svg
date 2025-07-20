@@ -1,0 +1,24 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#1a1a1a" stroke="#333" stroke-width="2"/>
+
+  <!-- Camera body -->
+  <rect x="28" y="45" width="72" height="48" rx="8" ry="8" fill="#444" stroke="#666" stroke-width="1"/>
+
+  <!-- Camera lens -->
+  <circle cx="64" cy="69" r="18" fill="#222" stroke="#555" stroke-width="2"/>
+  <circle cx="64" cy="69" r="12" fill="#111" stroke="#333" stroke-width="1"/>
+  <circle cx="64" cy="69" r="6" fill="#000"/>
+
+  <!-- Recording indicator dot -->
+  <circle cx="85" cy="52" r="6" fill="#ff4444">
+    <animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Camera details -->
+  <rect x="32" y="49" width="8" height="4" rx="2" ry="2" fill="#666"/>
+  <rect x="88" y="49" width="8" height="4" rx="2" ry="2" fill="#666"/>
+
+  <!-- Lens highlight -->
+  <circle cx="60" cy="65" r="3" fill="#444" opacity="0.6"/>
+</svg>

@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Chrome Extension Icon Generator</title>
+        <style>
+            body {
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                    sans-serif;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                background: #1a1a1a;
+                color: #fff;
+            }
+
+            .header {
+                text-align: center;
+                margin-bottom: 30px;
+            }
+
+            .preview {
+                display: flex;
+                gap: 20px;
+                justify-content: center;
+                margin: 30px 0;
+                flex-wrap: wrap;
+            }
+
+            .icon-preview {
+                background: #2a2a2a;
+                padding: 20px;
+                border-radius: 8px;
+                text-align: center;
+            }
+
+            .icon-preview img {
+                display: block;
+                margin: 0 auto 10px;
+                border: 1px solid #444;
+            }
+
+            .download-section {
+                background: #2a2a2a;
+                padding: 20px;
+                border-radius: 8px;
+                margin: 20px 0;
+            }
+
+            .btn {
+                background: #007acc;
+                color: white;
+                border: none;
+                padding: 12px 20px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 14px;
+                margin: 5px;
+                transition: background 0.2s;
+            }
+
+            .btn:hover {
+                background: #0066aa;
+            }
+
+            .instructions {
+                background: #2a2a2a;
+                padding: 20px;
+                border-radius: 8px;
+                margin: 20px 0;
+            }
+
+            .instructions h3 {
+                margin-top: 0;
+            }
+
+            .instructions ol {
+                padding-left: 20px;
+            }
+
+            .instructions li {
+                margin: 8px 0;
+            }
+
+            canvas {
+                display: none;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>📹 Tab Recorder Icon Generator</h1>
+            <p>
+                Generate all required PNG icon sizes for your Chrome extension
+            </p>
+        </div>
+
+        <div class="preview">
+            <div class="icon-preview">
+                <img id="icon-16" width="16" height="16" alt="16x16" />
+                <div>16x16</div>
+            </div>
+            <div class="icon-preview">
+                <img id="icon-32" width="32" height="32" alt="32x32" />
+                <div>32x32</div>
+            </div>
+            <div class="icon-preview">
+                <img id="icon-48" width="48" height="48" alt="48x48" />
+                <div>48x48</div>
+            </div>
+            <div class="icon-preview">
+                <img id="icon-128" width="128" height="128" alt="128x128" />
+                <div>128x128</div>
+            </div>
+        </div>
+
+        <div class="download-section">
+            <h3>Download Icons</h3>
+            <p>
+                Click each button to download the PNG files for your extension:
+            </p>
+            <button class="btn" onclick="downloadIcon(16)">
+                Download icon-16.png
+            </button>
+            <button class="btn" onclick="downloadIcon(32)">
+                Download icon-32.png
+            </button>
+            <button class="btn" onclick="downloadIcon(48)">
+                Download icon-48.png
+            </button>
+            <button class="btn" onclick="downloadIcon(128)">
+                Download icon-128.png
+            </button>
+            <br /><br />
+            <button
+                class="btn"
+                onclick="downloadAll()"
+                style="background: #28a745"
+            >
+                Download All Icons (ZIP)
+            </button>
+        </div>
+
+        <div class="instructions">
+            <h3>Installation Instructions</h3>
+            <ol>
+                <li>Download all four icon files using the buttons above</li>
+                <li>
+                    Create an <code>icons/</code> folder in your extension
+                    directory
+                </li>
+                <li>
+                    Place all downloaded PNG files in the
+                    <code>icons/</code> folder
+                </li>
+                <li>
+                    Load your extension in Chrome via
+                    <code>chrome://extensions/</code>
+                </li>
+                <li>Enable Developer mode and click "Load unpacked"</li>
+                <li>
+                    Select your extension folder and test with
+                    <code>Ctrl+Shift+R</code>
+                </li>
+            </ol>
+        </div>
+
+        <canvas id="canvas"></canvas>
+
+        <script>
+            // SVG source for the icon
+            const svgSource = `<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+            <!-- Background circle -->
+            <circle cx="64" cy="64" r="60" fill="#1a1a1a" stroke="#333" stroke-width="2"/>
+
+            <!-- Camera body -->
+            <rect x="28" y="45" width="72" height="48" rx="8" ry="8" fill="#444" stroke="#666" stroke-width="1"/>
+
+            <!-- Camera lens -->
+            <circle cx="64" cy="69" r="18" fill="#222" stroke="#555" stroke-width="2"/>
+            <circle cx="64" cy="69" r="12" fill="#111" stroke="#333" stroke-width="1"/>
+            <circle cx="64" cy="69" r="6" fill="#000"/>
+
+            <!-- Recording indicator dot -->
+            <circle cx="85" cy="52" r="6" fill="#ff4444"/>
+
+            <!-- Camera details -->
+            <rect x="32" y="49" width="8" height="4" rx="2" ry="2" fill="#666"/>
+            <rect x="88" y="49" width="8" height="4" rx="2" ry="2" fill="#666"/>
+
+            <!-- Lens highlight -->
+            <circle cx="60" cy="65" r="3" fill="#444" opacity="0.6"/>
+        </svg>`;
+
+            const canvas = document.getElementById("canvas");
+            const ctx = canvas.getContext("2d");
+
+            // Generated icon data URLs for each size
+            const iconDataUrls = {};
+
+            // Generate icons on page load
+            window.addEventListener("DOMContentLoaded", () => {
+                generateIcons();
+            });
+
+            function generateIcons() {
+                const sizes = [16, 32, 48, 128];
+
+                sizes.forEach((size) => {
+                    generateIcon(size, (dataUrl) => {
+                        iconDataUrls[size] = dataUrl;
+                        document.getElementById(`icon-${size}`).src = dataUrl;
+                    });
+                });
+            }
+
+            function generateIcon(size, callback) {
+                const img = new Image();
+                const svgBlob = new Blob([svgSource], {
+                    type: "image/svg+xml",
+                });
+                const url = URL.createObjectURL(svgBlob);
+
+                img.onload = function () {
+                    canvas.width = size;
+                    canvas.height = size;
+                    ctx.clearRect(0, 0, size, size);
+                    ctx.drawImage(img, 0, 0, size, size);
+
+                    const dataUrl = canvas.toDataURL("image/png");
+                    callback(dataUrl);
+
+                    URL.revokeObjectURL(url);
+                };
+
+                img.src = url;
+            }
+
+            function downloadIcon(size) {
+                if (!iconDataUrls[size]) {
+                    alert(
+                        "Icon not ready, please wait a moment and try again.",
+                    );
+                    return;
+                }
+
+                const link = document.createElement("a");
+                link.download = `icon-${size}.png`;
+                link.href = iconDataUrls[size];
+                link.click();
+            }
+
+            async function downloadAll() {
+                // Simple approach: trigger individual downloads
+                // For a real ZIP, you'd need a library like JSZip
+                const sizes = [16, 32, 48, 128];
+
+                for (const size of sizes) {
+                    if (iconDataUrls[size]) {
+                        await new Promise((resolve) => {
+                            setTimeout(() => {
+                                downloadIcon(size);
+                                resolve();
+                            }, 200);
+                        });
+                    }
+                }
+
+                alert("All icons downloaded! Check your Downloads folder.");
+            }
+        </script>
+    </body>
+</html>
