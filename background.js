@@ -1,9 +1,7 @@
 // Background service worker for tab recording functionality
-let recorder = null;
-let stream = null;
-let chunks = [];
 let isRecording = false;
 let recordingStartTime = null;
+let currentTabId = null;
 
 // Initialize extension
 chrome.runtime.onInstalled.addListener(() => {
@@ -29,9 +27,16 @@ chrome.commands.onCommand.addListener(async (command) => {
 
       // Reset state on error
       isRecording = false;
-      recorder = null;
-      stream = null;
+      currentTabId = null;
       await chrome.storage.local.set({ isRecording: false });
+
+      // Show user-friendly error
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icons/icon-48.png",
+        title: "Tab Recorder Error",
+        message: error.message,
+      });
     }
   }
 });
@@ -39,7 +44,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 // Start recording function
 async function startRecording() {
   try {
-    // Get current active tab for messaging
+    // Get current active tab
     const [activeTab] = await chrome.tabs.query({
       active: true,
       currentWindow: true,
@@ -48,111 +53,57 @@ async function startRecording() {
       throw new Error("No active tab found");
     }
 
-    // Inject script to trigger screen capture from content context
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: activeTab.id },
-      func: async () => {
-        try {
-          // Use getDisplayMedia for screen/tab capture
-          const stream = await navigator.mediaDevices.getDisplayMedia({
-            video: {
-              mediaSource: "screen",
-            },
-            audio: true,
-          });
-
-          // Store stream reference globally for background script access
-          window.recordingStream = stream;
-          return {
-            success: true,
-            hasAudio: stream.getAudioTracks().length > 0,
-          };
-        } catch (error) {
-          return { success: false, error: error.message };
-        }
-      },
-    });
-
-    const result = results[0].result;
-    if (!result.success) {
-      throw new Error(result.error || "Failed to capture display media");
+    // Check if tab URL is accessible
+    if (
+      activeTab.url.startsWith("chrome://") ||
+      activeTab.url.startsWith("chrome-extension://") ||
+      activeTab.url.startsWith("edge://") ||
+      activeTab.url.startsWith("about:")
+    ) {
+      throw new Error(
+        "Cannot record Chrome internal pages. Please navigate to a regular website (like google.com) and try again.",
+      );
     }
 
-    // Get the stream from the content script
-    const [streamResult] = await chrome.scripting.executeScript({
-      target: { tabId: activeTab.id },
-      func: () => {
-        if (window.recordingStream) {
-          // Transfer stream tracks to background (this is tricky)
-          return { hasStream: true };
-        }
-        return { hasStream: false };
-      },
+    // Create offscreen document for recording
+    await createOffscreenDocument();
+
+    // Send message to offscreen document to start recording
+    const response = await chrome.runtime.sendMessage({
+      action: "start-recording",
+      tabId: activeTab.id,
     });
 
-    if (!streamResult.result.hasStream) {
-      throw new Error("Failed to access recording stream");
+    if (!response || !response.success) {
+      throw new Error(response?.error || "Failed to start recording");
     }
-
-    // Since we can't directly transfer MediaStream between contexts,
-    // we'll handle recording in the content script
-    await chrome.scripting.executeScript({
-      target: { tabId: activeTab.id },
-      func: () => {
-        if (window.recordingStream && !window.mediaRecorder) {
-          const chunks = [];
-
-          window.mediaRecorder = new MediaRecorder(window.recordingStream, {
-            mimeType: "video/webm;codecs=vp9,opus",
-          });
-
-          window.mediaRecorder.ondataavailable = (event) => {
-            if (event.data && event.data.size > 0) {
-              chunks.push(event.data);
-            }
-          };
-
-          window.mediaRecorder.onstop = () => {
-            const blob = new Blob(chunks, { type: "video/webm" });
-            const url = URL.createObjectURL(blob);
-
-            // Create download link
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `tab-recording-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-
-            // Cleanup
-            URL.revokeObjectURL(url);
-            window.recordingStream.getTracks().forEach((track) => track.stop());
-            window.recordingStream = null;
-            window.mediaRecorder = null;
-          };
-
-          window.mediaRecorder.start(1000);
-        }
-      },
-    });
 
     // Update state
     isRecording = true;
+    currentTabId = activeTab.id;
     recordingStartTime = Date.now();
     await chrome.storage.local.set({ isRecording: true });
     await updateBadge("REC", "#ff0000");
 
-    // Notify content script
-    chrome.tabs
-      .sendMessage(activeTab.id, {
+    // Notify content script if possible
+    try {
+      chrome.tabs.sendMessage(activeTab.id, {
         action: "recording-started",
         timestamp: recordingStartTime,
-      })
-      .catch(() => {
-        // Content script might not be ready, ignore error
       });
+    } catch (e) {
+      // Content script might not be ready, that's ok
+    }
 
     console.log("Recording started");
+
+    // Show notification
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/icon-48.png",
+      title: "Recording Started",
+      message: "Press Ctrl+Shift+R again to stop recording",
+    });
   } catch (error) {
     console.error("Failed to start recording:", error);
     throw error;
@@ -162,55 +113,61 @@ async function startRecording() {
 // Stop recording function
 async function stopRecording() {
   try {
-    // Get current active tab
-    const [activeTab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
+    // Send message to offscreen document to stop recording
+    await chrome.runtime.sendMessage({
+      action: "stop-recording",
     });
 
-    if (activeTab) {
-      // Stop recording in content script
-      await chrome.scripting.executeScript({
-        target: { tabId: activeTab.id },
-        func: () => {
-          if (
-            window.mediaRecorder &&
-            window.mediaRecorder.state === "recording"
-          ) {
-            window.mediaRecorder.stop();
-          }
-        },
-      });
-
-      // Notify content script
-      chrome.tabs
-        .sendMessage(activeTab.id, {
+    // Notify content script if possible
+    if (currentTabId) {
+      try {
+        chrome.tabs.sendMessage(currentTabId, {
           action: "recording-stopped",
-        })
-        .catch(() => {
-          // Content script might not be ready, ignore error
         });
+      } catch (e) {
+        // Content script might not be ready, that's ok
+      }
     }
 
     // Update state
     isRecording = false;
-    recorder = null;
-    stream = null;
+    currentTabId = null;
     await chrome.storage.local.set({ isRecording: false });
     await updateBadge("", "#000000");
 
     console.log("Recording stopped");
+
+    // Show notification
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/icon-48.png",
+      title: "Recording Stopped",
+      message: "Video saved to Downloads folder",
+    });
   } catch (error) {
     console.error("Failed to stop recording:", error);
     throw error;
   }
 }
 
-// Save recording to downloads (handled in content script now)
-async function saveRecording() {
-  // This function is now handled in the content script
-  // since the MediaRecorder runs there
-  console.log("Recording save handled in content script");
+// Create offscreen document for recording
+async function createOffscreenDocument() {
+  // Check if offscreen document already exists
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ["OFFSCREEN_DOCUMENT"],
+    documentUrls: [chrome.runtime.getURL("offscreen.html")],
+  });
+
+  if (existingContexts.length > 0) {
+    return; // Already exists
+  }
+
+  // Create offscreen document
+  await chrome.offscreen.createDocument({
+    url: chrome.runtime.getURL("offscreen.html"),
+    reasons: ["USER_MEDIA"],
+    justification: "Recording screen content",
+  });
 }
 
 // Update extension badge
@@ -229,24 +186,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({
       isRecording,
       recordingStartTime,
-      hasStream: !!stream,
+      currentTabId,
     });
   } else if (request.action === "toggle-recording") {
     if (isRecording) {
-      stopRecording().then(() => sendResponse({ success: true }));
+      stopRecording()
+        .then(() => sendResponse({ success: true }))
+        .catch((err) => sendResponse({ success: false, error: err.message }));
     } else {
-      startRecording().then(() => sendResponse({ success: true }));
+      startRecording()
+        .then(() => sendResponse({ success: true }))
+        .catch((err) => sendResponse({ success: false, error: err.message }));
     }
     return true; // Keep message channel open for async response
+  } else if (request.action === "recording-complete") {
+    // Handle recording completion from offscreen document
+    isRecording = false;
+    currentTabId = null;
+    chrome.storage.local.set({ isRecording: false });
+    updateBadge("", "#000000");
+    sendResponse({ success: true });
   }
 });
 
 // Clean up on extension shutdown
 chrome.runtime.onSuspend.addListener(() => {
-  if (isRecording && recorder) {
-    recorder.stop();
-  }
-  if (stream) {
-    stream.getTracks().forEach((track) => track.stop());
+  if (isRecording) {
+    stopRecording();
   }
 });

@@ -3,7 +3,14 @@
   "version": "1.0.0",
   "manifest_version": 3,
   "description": "Record active browser tab or screen with hotkey controls and save as WebM video",
-  "permissions": ["downloads", "storage", "activeTab", "scripting"],
+  "permissions": [
+    "downloads",
+    "storage",
+    "activeTab",
+    "scripting",
+    "offscreen",
+    "notifications"
+  ],
   "background": {
     "service_worker": "background.js"
   },
