@@ -14,10 +14,10 @@ Record your active browser tab, your window, or entire screen as a WebM video wi
 
 ## Install
 
-1. Clone this repo
-2. Open chrome://extensions
+1. Download and unzip the latest release from the [releases page](https://github.com/mbarlow/chrome-recorder/releases), or clone this repo
+2. Open `chrome://extensions`
 3. Enable Developer Mode
-4. Click "Load unpacked" and select this directory
+4. Click "Load unpacked" and select the unzipped directory
 
 ## Usage
 
