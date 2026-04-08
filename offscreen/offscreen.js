@@ -101,7 +101,7 @@ async function saveRecording() {
 
     // Generate filename with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = `tab-recording-${timestamp}.webm`;
+    const filename = `chrome-recording-${timestamp}.webm`;
 
     // Create download link and trigger download
     const a = document.createElement("a");

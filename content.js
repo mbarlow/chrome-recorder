@@ -1,4 +1,4 @@
-// Content script for Tab Recorder extension
+// Content script for Chrome Recorder extension
 // Provides visual feedback and tab-level recording indicators
 
 let recordingIndicator = null;
@@ -22,7 +22,7 @@ function showRecordingIndicator() {
 
   // Create indicator element
   recordingIndicator = document.createElement("div");
-  recordingIndicator.id = "tab-recorder-indicator";
+  recordingIndicator.id = "chrome-recorder-indicator";
   recordingIndicator.innerHTML = `
     <div style="
       position: fixed;

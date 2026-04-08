@@ -1,11 +1,11 @@
-// Background service worker for tab recording functionality
+// Background service worker for Chrome Recorder
 let isRecording = false;
 let recordingStartTime = null;
 let currentTabId = null;
 
 // Initialize extension
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Tab Recorder extension installed");
+  console.log("Chrome Recorder extension installed");
   chrome.storage.local.set({
     isRecording: false,
     recordingCount: 0,
@@ -33,8 +33,8 @@ chrome.commands.onCommand.addListener(async (command) => {
       // Show user-friendly error
       chrome.notifications.create({
         type: "basic",
-        iconUrl: "icons/icon-48.png",
-        title: "Tab Recorder Error",
+        iconUrl: "icons/icon48.png",
+        title: "Chrome Recorder Error",
         message: error.message,
       });
     }
@@ -100,7 +100,7 @@ async function startRecording() {
     // Show notification
     chrome.notifications.create({
       type: "basic",
-      iconUrl: "icons/icon-48.png",
+      iconUrl: "icons/icon48.png",
       title: "Recording Started",
       message: "Press Ctrl+Shift+R again to stop recording",
     });
@@ -140,7 +140,7 @@ async function stopRecording() {
     // Show notification
     chrome.notifications.create({
       type: "basic",
-      iconUrl: "icons/icon-48.png",
+      iconUrl: "icons/icon48.png",
       title: "Recording Stopped",
       message: "Video saved to Downloads folder",
     });
@@ -155,7 +155,7 @@ async function createOffscreenDocument() {
   // Check if offscreen document already exists
   const existingContexts = await chrome.runtime.getContexts({
     contextTypes: ["OFFSCREEN_DOCUMENT"],
-    documentUrls: [chrome.runtime.getURL("offscreen.html")],
+    documentUrls: [chrome.runtime.getURL("offscreen/offscreen.html")],
   });
 
   if (existingContexts.length > 0) {
@@ -164,7 +164,7 @@ async function createOffscreenDocument() {
 
   // Create offscreen document
   await chrome.offscreen.createDocument({
-    url: chrome.runtime.getURL("offscreen.html"),
+    url: chrome.runtime.getURL("offscreen/offscreen.html"),
     reasons: ["USER_MEDIA"],
     justification: "Recording screen content",
   });
