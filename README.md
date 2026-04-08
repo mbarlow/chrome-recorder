@@ -2,6 +2,9 @@
 
 Record your active browser tab as a WebM video with one click or a keyboard shortcut.
 
+[chrome-recording-2026-04-08T02-24-19-256Z.webm](https://github.com/user-attachments/assets/50bf2c84-67f4-4e45-b505-2a8fc839c708)
+
+
 ## Features
 
 - Record any browser tab with audio
