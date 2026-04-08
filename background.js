@@ -1,44 +1,15 @@
-// Background service worker for tab recording functionality
+// Background service worker for Chrome Recorder
 let isRecording = false;
 let recordingStartTime = null;
 let currentTabId = null;
 
 // Initialize extension
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Tab Recorder extension installed");
+  console.log("Chrome Recorder extension installed");
   chrome.storage.local.set({
     isRecording: false,
     recordingCount: 0,
   });
-});
-
-// Handle keyboard command
-chrome.commands.onCommand.addListener(async (command) => {
-  if (command === "toggle-recording") {
-    try {
-      if (isRecording) {
-        await stopRecording();
-      } else {
-        await startRecording();
-      }
-    } catch (error) {
-      console.error("Recording toggle error:", error);
-      await updateBadge("ERR", "#ff0000");
-
-      // Reset state on error
-      isRecording = false;
-      currentTabId = null;
-      await chrome.storage.local.set({ isRecording: false });
-
-      // Show user-friendly error
-      chrome.notifications.create({
-        type: "basic",
-        iconUrl: "icons/icon-48.png",
-        title: "Tab Recorder Error",
-        message: error.message,
-      });
-    }
-  }
 });
 
 // Start recording function
@@ -96,14 +67,6 @@ async function startRecording() {
     }
 
     console.log("Recording started");
-
-    // Show notification
-    chrome.notifications.create({
-      type: "basic",
-      iconUrl: "icons/icon-48.png",
-      title: "Recording Started",
-      message: "Press Ctrl+Shift+R again to stop recording",
-    });
   } catch (error) {
     console.error("Failed to start recording:", error);
     throw error;
@@ -136,14 +99,6 @@ async function stopRecording() {
     await updateBadge("", "#000000");
 
     console.log("Recording stopped");
-
-    // Show notification
-    chrome.notifications.create({
-      type: "basic",
-      iconUrl: "icons/icon-48.png",
-      title: "Recording Stopped",
-      message: "Video saved to Downloads folder",
-    });
   } catch (error) {
     console.error("Failed to stop recording:", error);
     throw error;
@@ -155,7 +110,7 @@ async function createOffscreenDocument() {
   // Check if offscreen document already exists
   const existingContexts = await chrome.runtime.getContexts({
     contextTypes: ["OFFSCREEN_DOCUMENT"],
-    documentUrls: [chrome.runtime.getURL("offscreen.html")],
+    documentUrls: [chrome.runtime.getURL("offscreen/offscreen.html")],
   });
 
   if (existingContexts.length > 0) {
@@ -164,7 +119,7 @@ async function createOffscreenDocument() {
 
   // Create offscreen document
   await chrome.offscreen.createDocument({
-    url: chrome.runtime.getURL("offscreen.html"),
+    url: chrome.runtime.getURL("offscreen/offscreen.html"),
     reasons: ["USER_MEDIA"],
     justification: "Recording screen content",
   });
