@@ -12,35 +12,6 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Handle keyboard command
-chrome.commands.onCommand.addListener(async (command) => {
-  if (command === "toggle-recording") {
-    try {
-      if (isRecording) {
-        await stopRecording();
-      } else {
-        await startRecording();
-      }
-    } catch (error) {
-      console.error("Recording toggle error:", error);
-      await updateBadge("ERR", "#ff0000");
-
-      // Reset state on error
-      isRecording = false;
-      currentTabId = null;
-      await chrome.storage.local.set({ isRecording: false });
-
-      // Show user-friendly error
-      chrome.notifications.create({
-        type: "basic",
-        iconUrl: "icons/icon48.png",
-        title: "Chrome Recorder Error",
-        message: error.message,
-      });
-    }
-  }
-});
-
 // Start recording function
 async function startRecording() {
   try {
@@ -96,14 +67,6 @@ async function startRecording() {
     }
 
     console.log("Recording started");
-
-    // Show notification
-    chrome.notifications.create({
-      type: "basic",
-      iconUrl: "icons/icon48.png",
-      title: "Recording Started",
-      message: "Press Ctrl+Shift+R again to stop recording",
-    });
   } catch (error) {
     console.error("Failed to start recording:", error);
     throw error;
@@ -136,14 +99,6 @@ async function stopRecording() {
     await updateBadge("", "#000000");
 
     console.log("Recording stopped");
-
-    // Show notification
-    chrome.notifications.create({
-      type: "basic",
-      iconUrl: "icons/icon48.png",
-      title: "Recording Stopped",
-      message: "Video saved to Downloads folder",
-    });
   } catch (error) {
     console.error("Failed to stop recording:", error);
     throw error;

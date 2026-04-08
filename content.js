@@ -1,10 +1,8 @@
 // Content script for Chrome Recorder extension
-// Provides visual feedback and tab-level recording indicators
 
 let recordingIndicator = null;
 let isRecording = false;
 
-// Listen for messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "recording-started") {
     showRecordingIndicator();
@@ -15,69 +13,123 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Create and show recording indicator
 function showRecordingIndicator() {
-  // Remove existing indicator if present
   hideRecordingIndicator();
 
-  // Create indicator element
   recordingIndicator = document.createElement("div");
   recordingIndicator.id = "chrome-recorder-indicator";
-  recordingIndicator.innerHTML = `
-    <div style="
+
+  const style = document.createElement("style");
+  style.textContent = `
+    #chrome-recorder-indicator .cr-pill {
       position: fixed;
-      top: 20px;
-      right: 20px;
-      background: rgba(255, 0, 0, 0.9);
-      color: white;
-      padding: 8px 16px;
+      top: 16px;
+      right: 16px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #E5E5E5;
+      padding: 6px 12px;
       border-radius: 20px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       font-size: 12px;
-      font-weight: 600;
-      z-index: 999999;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      font-weight: 500;
+      z-index: 2147483647;
       display: flex;
       align-items: center;
-      gap: 6px;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      animation: pulse 2s infinite;
-    ">
-      <div style="
-        width: 8px;
-        height: 8px;
-        background: white;
-        border-radius: 50%;
-        animation: blink 1s infinite;
-      "></div>
-      REC
-    </div>
-    <style>
-      @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-      }
-      @keyframes blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.3; }
-      }
-    </style>
+      gap: 7px;
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s ease;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+    }
+    #chrome-recorder-indicator .cr-pill:hover {
+      background: rgba(0, 0, 0, 0.9);
+    }
+    #chrome-recorder-indicator .cr-dot {
+      width: 8px;
+      height: 8px;
+      background: #EF4444;
+      border-radius: 50%;
+      animation: cr-blink 1.2s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+    #chrome-recorder-indicator .cr-pill:hover .cr-dot {
+      animation: none;
+      background: #EF4444;
+      border-radius: 2px;
+    }
+    #chrome-recorder-indicator .cr-label {}
+    #chrome-recorder-indicator .cr-pill:hover .cr-label-rec { display: none; }
+    #chrome-recorder-indicator .cr-pill:hover .cr-label-stop { display: inline; }
+    #chrome-recorder-indicator .cr-label-stop { display: none; }
+    @keyframes cr-blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.25; }
+    }
   `;
 
-  // Add to page
+  const pill = document.createElement("div");
+  pill.className = "cr-pill";
+  pill.innerHTML = `
+    <div class="cr-dot"></div>
+    <span class="cr-label">
+      <span class="cr-label-rec">REC</span>
+      <span class="cr-label-stop">Stop</span>
+    </span>
+  `;
+
+  recordingIndicator.appendChild(style);
+  recordingIndicator.appendChild(pill);
   document.body.appendChild(recordingIndicator);
 
-  // Add click handler to stop recording
-  recordingIndicator.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ action: "toggle-recording" });
-  });
+  // Click vs drag handling
+  let dragStartX, dragStartY, didDrag;
 
-  // Make it draggable (optional enhancement)
-  makeIndicatorDraggable();
+  pill.addEventListener("mousedown", (e) => {
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    didDrag = false;
+
+    const rect = pill.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+
+    pill.style.transition = "none";
+
+    function onMove(e) {
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        didDrag = true;
+      }
+
+      if (didDrag) {
+        const newLeft = Math.max(0, Math.min(window.innerWidth - pill.offsetWidth, e.clientX - offsetX));
+        const newTop = Math.max(0, Math.min(window.innerHeight - pill.offsetHeight, e.clientY - offsetY));
+        pill.style.left = newLeft + "px";
+        pill.style.top = newTop + "px";
+        pill.style.right = "auto";
+      }
+    }
+
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      pill.style.transition = "";
+
+      if (!didDrag) {
+        chrome.runtime.sendMessage({ action: "toggle-recording" });
+      }
+    }
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    e.preventDefault();
+  });
 }
 
-// Hide recording indicator
 function hideRecordingIndicator() {
   if (recordingIndicator) {
     recordingIndicator.remove();
@@ -85,62 +137,10 @@ function hideRecordingIndicator() {
   }
 }
 
-// Make indicator draggable for better UX
-function makeIndicatorDraggable() {
-  if (!recordingIndicator) return;
-
-  const indicator = recordingIndicator.firstElementChild;
-  let isDragging = false;
-  let startX, startY, startLeft, startTop;
-
-  indicator.style.cursor = "move";
-
-  indicator.addEventListener("mousedown", (e) => {
-    isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-
-    const rect = indicator.getBoundingClientRect();
-    startLeft = rect.left;
-    startTop = rect.top;
-
-    indicator.style.transition = "none";
-  });
-
-  document.addEventListener("mousemove", (e) => {
-    if (!isDragging) return;
-
-    const deltaX = e.clientX - startX;
-    const deltaY = e.clientY - startY;
-
-    const newLeft = Math.max(
-      0,
-      Math.min(window.innerWidth - indicator.offsetWidth, startLeft + deltaX),
-    );
-    const newTop = Math.max(
-      0,
-      Math.min(window.innerHeight - indicator.offsetHeight, startTop + deltaY),
-    );
-
-    indicator.style.left = newLeft + "px";
-    indicator.style.top = newTop + "px";
-    indicator.style.right = "auto";
-  });
-
-  document.addEventListener("mouseup", () => {
-    if (isDragging) {
-      isDragging = false;
-      indicator.style.transition = "";
-    }
-  });
-}
-
-// Clean up indicator on page unload
 window.addEventListener("beforeunload", () => {
   hideRecordingIndicator();
 });
 
-// Initialize - check if recording is already in progress
 chrome.runtime
   .sendMessage({ action: "get-status" })
   .then((status) => {
@@ -149,6 +149,4 @@ chrome.runtime
       isRecording = true;
     }
   })
-  .catch(() => {
-    // Extension might be starting up, ignore errors
-  });
+  .catch(() => {});

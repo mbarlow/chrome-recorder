@@ -5,8 +5,7 @@ Record your active browser tab as a WebM video with one click or a keyboard shor
 ## Features
 
 - Record any browser tab with audio
-- Keyboard shortcut to start and stop recording
-- Visual recording indicator on the page
+- Draggable recording indicator on the page — click to stop
 - Automatic save to Downloads as WebM
 - Clean popup with live timer
 
@@ -19,11 +18,7 @@ Record your active browser tab as a WebM video with one click or a keyboard shor
 
 ## Usage
 
-Click the extension icon and press "Start Recording", or use the keyboard shortcut. Press again to stop. The recording saves automatically to your Downloads folder.
-
-## Keyboard Shortcut
-
-Ctrl+Shift+R (Cmd+Shift+R on Mac)
+Click the extension icon and press "Start Recording". Click the floating indicator on the page to stop. The recording saves automatically to your Downloads folder.
 
 ## License
 
