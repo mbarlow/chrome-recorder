@@ -1,6 +1,6 @@
 {
   "name": "Chrome Recorder",
-  "version": "1.0.0",
+  "version": "0.0.2",
   "manifest_version": 3,
   "description": "Record active browser tab or screen and save as WebM video",
   "permissions": [
@@ -29,8 +29,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start"
     }
   ]
