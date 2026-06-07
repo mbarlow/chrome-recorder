@@ -46,6 +46,11 @@ async function startRecording() {
     });
 
     if (!response || !response.success) {
+      // User dismissed the screen picker — not an error, just don't start.
+      if (response && response.cancelled) {
+        console.log("Recording cancelled by user");
+        return;
+      }
       throw new Error(response?.error || "Failed to start recording");
     }
 
@@ -56,15 +61,14 @@ async function startRecording() {
     await chrome.storage.local.set({ isRecording: true });
     await updateBadge("REC", "#ff0000");
 
-    // Notify content script if possible
-    try {
-      chrome.tabs.sendMessage(activeTab.id, {
+    // Notify content script if possible. The rejection is async, so catch
+    // on the promise — a try/catch won't see "receiving end does not exist".
+    chrome.tabs
+      .sendMessage(activeTab.id, {
         action: "recording-started",
         timestamp: recordingStartTime,
-      });
-    } catch (e) {
-      // Content script might not be ready, that's ok
-    }
+      })
+      .catch(() => {}); // content script may not be injected on this tab
 
     console.log("Recording started");
   } catch (error) {
@@ -81,15 +85,11 @@ async function stopRecording() {
       action: "stop-recording",
     });
 
-    // Notify content script if possible
+    // Notify content script if possible (async rejection — catch on promise).
     if (currentTabId) {
-      try {
-        chrome.tabs.sendMessage(currentTabId, {
-          action: "recording-stopped",
-        });
-      } catch (e) {
-        // Content script might not be ready, that's ok
-      }
+      chrome.tabs
+        .sendMessage(currentTabId, { action: "recording-stopped" })
+        .catch(() => {}); // content script may not be injected on this tab
     }
 
     // Update state
@@ -123,6 +123,16 @@ async function createOffscreenDocument() {
     reasons: ["USER_MEDIA"],
     justification: "Recording screen content",
   });
+}
+
+// Tear down the offscreen document so each recording starts from a fresh
+// page — no stale MediaRecorder/stream/chunks carried between recordings.
+async function closeOffscreenDocument() {
+  try {
+    await chrome.offscreen.closeDocument();
+  } catch (e) {
+    // No document open; nothing to close.
+  }
 }
 
 // Update extension badge
@@ -160,6 +170,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     currentTabId = null;
     chrome.storage.local.set({ isRecording: false });
     updateBadge("", "#000000");
+    // Download is already committed by the click(); safe to tear down now.
+    closeOffscreenDocument();
     sendResponse({ success: true });
   }
 });
