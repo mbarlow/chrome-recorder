@@ -33,7 +33,7 @@ async function updateStatus() {
     const status = await chrome.runtime.sendMessage({
       action: "get-status",
     });
-    if (status.isRecording) {
+    if (status && status.isRecording) {
       showRecording(status.recordingStartTime);
     } else {
       showIdle();
