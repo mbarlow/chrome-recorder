@@ -5,6 +5,10 @@
 // truth; reads always come from storage so popup/shortcut/content-script see
 // the real state even after the worker was torn down and respawned.
 
+// Valid webcam overlay corners, in cycle order (bottom-right is the default,
+// streamer-standard spot).
+const CORNERS = ["br", "bl", "tl", "tr"];
+
 // Initialize extension
 chrome.runtime.onInstalled.addListener(() => {
   console.log("Chrome Recorder extension installed");
@@ -12,7 +16,9 @@ chrome.runtime.onInstalled.addListener(() => {
     isRecording: false,
     recordingStartTime: null,
     currentTabId: null,
-    recordingCount: 0,
+    // Webcam overlay settings persist across recordings.
+    webcamEnabled: false,
+    webcamCorner: "br",
   });
 });
 
@@ -23,16 +29,54 @@ async function getState() {
     "isRecording",
     "recordingStartTime",
     "currentTabId",
+    "webcamEnabled",
+    "webcamCorner",
   ]);
   return {
     isRecording: !!s.isRecording,
     recordingStartTime: s.recordingStartTime ?? null,
     currentTabId: s.currentTabId ?? null,
+    webcamEnabled: !!s.webcamEnabled,
+    webcamCorner: CORNERS.includes(s.webcamCorner) ? s.webcamCorner : "br",
   };
 }
 
 async function setState(patch) {
   await chrome.storage.local.set(patch);
+}
+
+// Relay a message to the offscreen document. No-op (swallowed) when no
+// offscreen doc / popup is listening — used for live overlay tweaks.
+async function relayToOffscreen(message) {
+  try {
+    await chrome.runtime.sendMessage(message);
+  } catch (e) {
+    // No receiving end (not recording, or popup closed) — nothing to update.
+  }
+}
+
+// --- Webcam overlay settings ----------------------------------------------
+
+async function setWebcamEnabled(enabled) {
+  await setState({ webcamEnabled: enabled });
+  await relayToOffscreen({ action: "set-webcam", enabled });
+}
+
+async function setWebcamCorner(corner) {
+  if (!CORNERS.includes(corner)) return;
+  await setState({ webcamCorner: corner });
+  await relayToOffscreen({ action: "set-corner", corner });
+}
+
+async function toggleWebcam() {
+  const { webcamEnabled } = await getState();
+  await setWebcamEnabled(!webcamEnabled);
+}
+
+async function cycleCorner() {
+  const { webcamCorner } = await getState();
+  const next = CORNERS[(CORNERS.indexOf(webcamCorner) + 1) % CORNERS.length];
+  await setWebcamCorner(next);
 }
 
 // --- Recording control -----------------------------------------------------
@@ -70,10 +114,14 @@ async function startRecording() {
   // Create offscreen document for recording
   await createOffscreenDocument();
 
-  // Send message to offscreen document to start recording
+  // Send message to offscreen document to start recording, seeding the
+  // current webcam overlay settings.
+  const { webcamEnabled, webcamCorner } = await getState();
   const response = await chrome.runtime.sendMessage({
     action: "start-recording",
     tabId: activeTab.id,
+    webcamEnabled,
+    webcamCorner,
   });
 
   if (!response || !response.success) {
@@ -197,6 +245,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then(() => sendResponse({ success: true }))
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true; // Keep message channel open for async response
+  } else if (request.action === "set-webcam-enabled") {
+    // From the popup. Relays live to the offscreen doc if recording.
+    setWebcamEnabled(!!request.enabled)
+      .then(() => sendResponse({ success: true }))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
+  } else if (request.action === "set-webcam-corner") {
+    setWebcamCorner(request.corner)
+      .then(() => sendResponse({ success: true }))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
   } else if (request.action === "recording-complete") {
     // Handle recording completion from offscreen document. Clear any state
     // the stop path didn't (e.g. user ended sharing from the browser chrome).
@@ -211,12 +270,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Keyboard shortcut (configurable at chrome://extensions/shortcuts).
+// Keyboard shortcuts (configurable at chrome://extensions/shortcuts).
 if (chrome.commands) {
+  const handlers = {
+    "toggle-recording": toggleRecording,
+    "toggle-webcam": toggleWebcam,
+    "cycle-corner": cycleCorner,
+  };
   chrome.commands.onCommand.addListener((command) => {
-    if (command === "toggle-recording") {
-      toggleRecording().catch((err) =>
-        console.error("Shortcut toggle failed:", err),
+    const handler = handlers[command];
+    if (handler) {
+      handler().catch((err) =>
+        console.error(`Shortcut "${command}" failed:`, err),
       );
     }
   });
