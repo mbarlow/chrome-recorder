@@ -18,7 +18,8 @@ let webcamVideo = null;
 // Compositing.
 let canvas = null;
 let ctx = null;
-let rafId = null;
+let drawing = false;
+let drawTimer = null;
 
 // Audio mixing. The dest track is added to the recorder at start and stays put;
 // sources connect/disconnect underneath it.
@@ -206,8 +207,38 @@ function drawFrame() {
     ctx.stroke();
     ctx.restore();
   }
+}
 
-  rafId = requestAnimationFrame(drawFrame);
+// Drive the compositor from the MEDIA pipeline, not the paint pipeline.
+// requestAnimationFrame never fires steadily in a headless offscreen document
+// (it has nothing to paint to), which froze the canvas after one frame while
+// captureStream kept emitting that same frame. requestVideoFrameCallback fires
+// per captured screen frame regardless of visibility; the interval is a
+// heartbeat so the webcam keeps moving even when the screen is static.
+function scheduleVideoFrame() {
+  if (!drawing || !screenVideo || !screenVideo.requestVideoFrameCallback) return;
+  screenVideo.requestVideoFrameCallback(() => {
+    if (!drawing) return;
+    drawFrame();
+    scheduleVideoFrame();
+  });
+}
+
+function startDrawLoop() {
+  drawing = true;
+  drawFrame();
+  scheduleVideoFrame();
+  drawTimer = setInterval(() => {
+    if (drawing) drawFrame();
+  }, 33); // ~30fps cadence, independent of screen activity
+}
+
+function stopDrawLoop() {
+  drawing = false;
+  if (drawTimer) {
+    clearInterval(drawTimer);
+    drawTimer = null;
+  }
 }
 
 // --- Recording lifecycle ---------------------------------------------------
@@ -256,7 +287,7 @@ async function startRecording(opts) {
     }
 
     // 5) Start the compositor, then build the output stream from it.
-    drawFrame();
+    startDrawLoop();
     const canvasStream = canvas.captureStream(30);
     const outputTracks = [...canvasStream.getVideoTracks()];
     const mixedAudio = audioDest.stream.getAudioTracks();
@@ -303,10 +334,7 @@ async function startRecording(opts) {
 // Stop all capture inputs and the draw loop (but not the recorder — its onstop
 // still needs to flush the final blob).
 function stopInputs() {
-  if (rafId) {
-    cancelAnimationFrame(rafId);
-    rafId = null;
-  }
+  stopDrawLoop();
   if (screenStream) screenStream.getTracks().forEach((t) => t.stop());
   if (webcamStream) webcamStream.getTracks().forEach((t) => t.stop());
   screenStream = null;
