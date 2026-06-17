@@ -217,9 +217,13 @@ async function startRecording(opts) {
     corner = opts?.webcamCorner || "br";
     chunks = [];
 
-    // 1) Screen capture (this is what the picker prompts for).
+    // 1) Screen capture (this is what the picker prompts for). Hint the
+    //    monitor surface so the picker biases toward whole-output capture —
+    //    a window pick would stay fixed on that window across workspace
+    //    switches (notably on Wayland/Hyprland). ("mediaSource" is a
+    //    non-standard constraint Chrome ignores; displaySurface is the real one.)
     screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { mediaSource: "screen" },
+      video: { displaySurface: "monitor" },
       audio: true,
     });
     screenVideo = makeVideoEl(screenStream);

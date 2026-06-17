@@ -29,6 +29,8 @@ Mid-recording, by keyboard:
 
 The recording never pauses — toggling and moving the overlay leaves one continuous take.
 
+There's no live self-view: the webcam is composited straight into the file, so you won't see yourself on screen while recording.
+
 ## Install
 
 1. Download and unzip the latest release from the [releases page](https://github.com/mbarlow/chrome-recorder/releases), or clone this repo
