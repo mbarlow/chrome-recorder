@@ -12,6 +12,9 @@ const msg = document.getElementById("msg");
     });
     stream.getTracks().forEach((t) => t.stop()); // only needed the grant
     msg.textContent = "✓ Camera enabled. This window will close.";
+    // Record the grant so the popup stops routing back here, and enable the
+    // overlay now that the camera is usable.
+    await chrome.storage.local.set({ cameraGranted: true });
     chrome.runtime.sendMessage({ action: "set-webcam-enabled", enabled: true });
     setTimeout(() => window.close(), 1200);
   } catch (e) {

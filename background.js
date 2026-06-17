@@ -270,13 +270,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch((err) => sendResponse({ success: false, error: err.message }));
     return true;
   } else if (request.action === "recording-complete") {
-    // Handle recording completion from offscreen document. Clear any state
-    // the stop path didn't (e.g. user ended sharing from the browser chrome).
-    setState({
-      isRecording: false,
-      recordingStartTime: null,
-      currentTabId: null,
-    }).then(() => updateBadge("", "#000000"));
+    // Handle recording completion from offscreen document. This also covers
+    // the path where the stop path never ran — e.g. the user ended sharing
+    // from the browser chrome — so hide the on-page indicator here too,
+    // otherwise the pill lingers and its next click starts a new recording.
+    getState()
+      .then(({ currentTabId }) => {
+        if (currentTabId) {
+          chrome.tabs
+            .sendMessage(currentTabId, { action: "recording-stopped" })
+            .catch(() => {});
+        }
+        return setState({
+          isRecording: false,
+          recordingStartTime: null,
+          currentTabId: null,
+        });
+      })
+      .then(() => updateBadge("", "#000000"));
     // Download is already committed by the click(); safe to tear down now.
     closeOffscreenDocument();
     sendResponse({ success: true });

@@ -65,10 +65,20 @@ function renderWebcam(state) {
 
 async function handleWebcamToggle() {
   const enable = webcamToggle.checked;
+  webcamHint.textContent = "";
+
+  // The checkbox is intent — persist it immediately and never auto-uncheck,
+  // so the UI can't fight the user.
+  await chrome.runtime.sendMessage({
+    action: "set-webcam-enabled",
+    enabled: enable,
+  });
+
   if (enable && !(await isCameraGranted())) {
     // Can't request camera from the action popup — it closes the moment the
     // permission chip appears. Hand off to a real window that survives focus
-    // loss; it grants the camera and enables the overlay itself.
+    // loss; it grants the camera and records the grant.
+    webcamHint.textContent = "Allow camera in the window that opened.";
     chrome.windows.create({
       url: chrome.runtime.getURL("popup/permission.html"),
       type: "popup",
@@ -76,29 +86,17 @@ async function handleWebcamToggle() {
       height: 200,
       focused: true,
     });
-    webcamToggle.checked = false;
-    webcamHint.textContent = "Allow camera in the window that opened.";
-    return;
   }
-  webcamHint.textContent = "";
-  await chrome.runtime.sendMessage({
-    action: "set-webcam-enabled",
-    enabled: enable,
-  });
+
   await updateStatus();
 }
 
+// Whether the camera grant has been completed once. We track our own flag
+// (set by the permission page) rather than permissions.query, which is
+// unreliable for extension-origin getUserMedia grants.
 async function isCameraGranted() {
-  try {
-    if (navigator.permissions && navigator.permissions.query) {
-      const st = await navigator.permissions.query({ name: "camera" });
-      return st.state === "granted";
-    }
-  } catch (e) {
-    // permissions.query may not support "camera" — assume not granted, which
-    // routes through the permission window (safe either way).
-  }
-  return false;
+  const { cameraGranted } = await chrome.storage.local.get("cameraGranted");
+  return !!cameraGranted;
 }
 
 async function handleCornerPick(corner) {
