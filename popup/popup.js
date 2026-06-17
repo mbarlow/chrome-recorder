@@ -65,15 +65,20 @@ function renderWebcam(state) {
 
 async function handleWebcamToggle() {
   const enable = webcamToggle.checked;
-  if (enable) {
-    // The offscreen doc is headless and can't prompt — grant the camera from
-    // this user-gesture once, then it can open silently on the same origin.
-    const granted = await ensureCameraPermission();
-    if (!granted) {
-      webcamToggle.checked = false;
-      webcamHint.textContent = "Camera permission denied.";
-      return;
-    }
+  if (enable && !(await isCameraGranted())) {
+    // Can't request camera from the action popup — it closes the moment the
+    // permission chip appears. Hand off to a real window that survives focus
+    // loss; it grants the camera and enables the overlay itself.
+    chrome.windows.create({
+      url: chrome.runtime.getURL("popup/permission.html"),
+      type: "popup",
+      width: 360,
+      height: 200,
+      focused: true,
+    });
+    webcamToggle.checked = false;
+    webcamHint.textContent = "Allow camera in the window that opened.";
+    return;
   }
   webcamHint.textContent = "";
   await chrome.runtime.sendMessage({
@@ -83,25 +88,17 @@ async function handleWebcamToggle() {
   await updateStatus();
 }
 
-async function ensureCameraPermission() {
+async function isCameraGranted() {
   try {
     if (navigator.permissions && navigator.permissions.query) {
       const st = await navigator.permissions.query({ name: "camera" });
-      if (st.state === "granted") return true;
+      return st.state === "granted";
     }
   } catch (e) {
-    // permissions.query may not support "camera" — fall through to prompt.
+    // permissions.query may not support "camera" — assume not granted, which
+    // routes through the permission window (safe either way).
   }
-  try {
-    const s = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
-    s.getTracks().forEach((t) => t.stop()); // only needed the grant
-    return true;
-  } catch (e) {
-    return false;
-  }
+  return false;
 }
 
 async function handleCornerPick(corner) {

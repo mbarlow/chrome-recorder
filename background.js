@@ -145,6 +145,19 @@ async function startRecording() {
   });
   await updateBadge("REC", "#ff0000");
 
+  // Ensure the indicator's content script is present. The manifest only
+  // injects it on pages loaded after install, so tabs already open when the
+  // extension loaded would otherwise show no indicator. Re-injection is a
+  // no-op (guarded), and on (re)run it self-checks status and shows the pill.
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: activeTab.id },
+      files: ["content.js"],
+    });
+  } catch (e) {
+    // Restricted page (e.g. the Web Store) — can't inject; skip silently.
+  }
+
   // Notify content script if possible. The rejection is async, so catch
   // on the promise — a try/catch won't see "receiving end does not exist".
   chrome.tabs

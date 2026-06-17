@@ -1,4 +1,10 @@
-// Content script for Chrome Recorder extension
+// Content script for Chrome Recorder extension.
+//
+// Injected both by the manifest (on page load) and programmatically on
+// record-start (so tabs open before the extension still get the indicator).
+// The guard makes a second injection a no-op instead of stacking listeners.
+if (!window.__chromeRecorderInjected) {
+  window.__chromeRecorderInjected = true;
 
 let recordingIndicator = null;
 let isRecording = false;
@@ -150,3 +156,5 @@ chrome.runtime
     }
   })
   .catch(() => {});
+
+} // end __chromeRecorderInjected guard
