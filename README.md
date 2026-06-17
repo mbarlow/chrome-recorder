@@ -9,8 +9,10 @@ Record your active browser tab, your window, or entire screen as a WebM video wi
 
 - Record any browser tab with audio
 - Draggable recording indicator on the page — click to stop
+- Keyboard shortcut to start/stop without opening the popup (`Ctrl+Shift+9`, `Cmd+Shift+9` on Mac)
 - Automatic save to Downloads as WebM
 - Clean popup with live timer
+- State survives the service worker sleeping — the timer and badge stay correct on long recordings
 
 ## Install
 
@@ -21,7 +23,9 @@ Record your active browser tab, your window, or entire screen as a WebM video wi
 
 ## Usage
 
-Click the extension icon and press "Start Recording". Click the floating indicator on the page to stop. The recording saves automatically to your Downloads folder.
+Click the extension icon and press "Start Recording", or press `Ctrl+Shift+9` (`Cmd+Shift+9` on Mac). Click the floating indicator on the page or hit the shortcut again to stop. The recording saves automatically to your Downloads folder.
+
+Rebind the shortcut at `chrome://extensions/shortcuts`.
 
 ## License
 
