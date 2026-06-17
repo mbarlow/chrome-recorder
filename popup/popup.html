@@ -108,6 +108,78 @@
                 cursor: not-allowed;
             }
 
+            .webcam {
+                margin-bottom: 14px;
+                padding: 12px;
+                border: 1px solid #E5E7EB;
+                border-radius: 8px;
+            }
+
+            .webcam-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                cursor: pointer;
+            }
+
+            .webcam-label {
+                font-size: 13px;
+                font-weight: 500;
+                color: #111;
+            }
+
+            #webcam-toggle {
+                width: 16px;
+                height: 16px;
+                accent-color: #EF4444;
+                cursor: pointer;
+            }
+
+            .corners {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 6px;
+                margin-top: 10px;
+            }
+
+            .corners button {
+                font-size: 16px;
+                line-height: 1;
+                padding: 8px 0;
+                border: 1px solid #E5E7EB;
+                border-radius: 6px;
+                background: #FFFFFF;
+                color: #9CA3AF;
+                cursor: pointer;
+                transition: all 0.15s ease;
+            }
+
+            .corners button:hover {
+                border-color: #9CA3AF;
+            }
+
+            .corners button.active {
+                background: #1A1A1A;
+                border-color: #1A1A1A;
+                color: #FFFFFF;
+            }
+
+            .corners.disabled {
+                opacity: 0.4;
+                pointer-events: none;
+            }
+
+            .hint {
+                margin-top: 8px;
+                font-size: 11px;
+                color: #EF4444;
+                min-height: 0;
+            }
+
+            .hint:empty {
+                display: none;
+            }
+
             @media (prefers-color-scheme: dark) {
                 body {
                     background: #1A1A1A;
@@ -147,6 +219,29 @@
                     border-color: #DC2626;
                 }
 
+                .webcam {
+                    border-color: #333;
+                }
+
+                .webcam-label {
+                    color: #E5E5E5;
+                }
+
+                .corners button {
+                    background: #1A1A1A;
+                    border-color: #333;
+                    color: #777;
+                }
+
+                .corners button:hover {
+                    border-color: #666;
+                }
+
+                .corners button.active {
+                    background: #E5E5E5;
+                    border-color: #E5E5E5;
+                    color: #1A1A1A;
+                }
             }
         </style>
     </head>
@@ -161,6 +256,20 @@
         </div>
 
         <div class="timer" id="timer">00:00</div>
+
+        <div class="webcam">
+            <label class="webcam-row">
+                <span class="webcam-label">Webcam overlay</span>
+                <input type="checkbox" id="webcam-toggle" />
+            </label>
+            <div class="corners" id="corners">
+                <button data-corner="tl" title="Top left">◤</button>
+                <button data-corner="tr" title="Top right">◥</button>
+                <button data-corner="bl" title="Bottom left">◣</button>
+                <button data-corner="br" title="Bottom right">◢</button>
+            </div>
+            <p class="hint" id="webcam-hint"></p>
+        </div>
 
         <button class="toggle-btn" id="toggle-btn">Start Recording</button>
 

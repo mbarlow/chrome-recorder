@@ -1,7 +1,34 @@
-// Content script for Chrome Recorder extension
+// Content script for Chrome Recorder extension.
+//
+// Injected both by the manifest (on page load) and programmatically on
+// record-start (so tabs open before the extension still get the indicator).
+// The guard makes a second injection a no-op instead of stacking listeners.
+if (!window.__chromeRecorderInjected) {
+  window.__chromeRecorderInjected = true;
 
 let recordingIndicator = null;
 let isRecording = false;
+
+// After the extension is reloaded/updated, content scripts already living on
+// open tabs are orphaned: chrome.runtime is torn out, so touching it throws
+// "Cannot read properties of undefined". Guard every message and, if we find
+// ourselves orphaned, retire the now-dead indicator instead of erroring.
+function extensionAlive() {
+  return typeof chrome !== "undefined" && chrome.runtime && !!chrome.runtime.id;
+}
+
+function send(message) {
+  if (!extensionAlive()) {
+    hideRecordingIndicator();
+    return;
+  }
+  try {
+    const p = chrome.runtime.sendMessage(message);
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  } catch (e) {
+    hideRecordingIndicator(); // context invalidated mid-call
+  }
+}
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "recording-started") {
@@ -120,7 +147,7 @@ function showRecordingIndicator() {
       pill.style.transition = "";
 
       if (!didDrag) {
-        chrome.runtime.sendMessage({ action: "toggle-recording" });
+        send({ action: "toggle-recording" });
       }
     }
 
@@ -141,12 +168,16 @@ window.addEventListener("beforeunload", () => {
   hideRecordingIndicator();
 });
 
-chrome.runtime
-  .sendMessage({ action: "get-status" })
-  .then((status) => {
-    if (status && status.isRecording) {
-      showRecordingIndicator();
-      isRecording = true;
-    }
-  })
-  .catch(() => {});
+if (extensionAlive()) {
+  chrome.runtime
+    .sendMessage({ action: "get-status" })
+    .then((status) => {
+      if (status && status.isRecording) {
+        showRecordingIndicator();
+        isRecording = true;
+      }
+    })
+    .catch(() => {});
+}
+
+} // end __chromeRecorderInjected guard
