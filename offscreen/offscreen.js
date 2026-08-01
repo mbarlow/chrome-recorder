@@ -31,9 +31,11 @@ const audioSources = {}; // key -> MediaStreamAudioSourceNode
 let webcamOn = false;
 let corner = "br";
 
-// PiP layout, as fractions of the canvas width.
+// PiP layout, as fractions of the canvas width. The margin is applied to both
+// axes off the width, so at 16:9 the vertical gap reads a little larger than
+// the horizontal one — which is what you want against a screen edge.
 const PIP_WIDTH_FRAC = 0.22;
-const PIP_MARGIN_FRAC = 0.02;
+const PIP_MARGIN_FRAC = 0.045;
 
 // Pick the best container/codec the browser actually supports.
 function pickMimeType() {
@@ -46,42 +48,76 @@ function pickMimeType() {
   return candidates.find((t) => MediaRecorder.isTypeSupported(t)) || "";
 }
 
-// Listen for messages from background script
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+// Listen for messages from background script.
+//
+// CRITICAL: this listener must NOT be `async`, and must only answer messages
+// addressed to us. chrome.runtime.sendMessage broadcasts to every extension
+// context, so this document also sees "get-status" from the popup and the
+// content script. An async listener returns a Promise, which Chrome reads as
+// "I will respond" — and when the function falls through without calling
+// sendResponse, that Promise resolves to null. Measured on Chrome 150: with
+// this document alive, 20/20 get-status calls resolved to null instead of the
+// background's real answer, because this fast fall-through always beat the
+// background's storage read. That is: while recording, every status query
+// returned "not recording".
+//
+// So: return true ONLY for actions we own, and return false otherwise so the
+// channel stays open for the background to answer.
+const OWNED_ACTIONS = new Set([
+  "start-recording",
+  "stop-recording",
+  "set-webcam",
+  "set-corner",
+]);
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request?.target !== "offscreen" || !OWNED_ACTIONS.has(request.action)) {
+    return false; // not ours — don't answer, don't hold the channel
+  }
+
   if (request.action === "start-recording") {
-    try {
-      await startRecording(request);
-      sendResponse({ success: true });
-    } catch (error) {
-      // User dismissing the screen picker is expected, not a failure.
-      const cancelled = error.name === "NotAllowedError";
-      if (!cancelled) {
-        console.error("Offscreen recording error:", error.name, error.message);
-      }
-      sendResponse({
-        success: false,
-        cancelled,
-        error: error.message || String(error),
-      });
-    }
-  } else if (request.action === "stop-recording") {
-    try {
-      await stopRecording();
-      sendResponse({ success: true });
-    } catch (error) {
-      console.error("Offscreen stop error:", error);
-      sendResponse({ success: false, error: error.message });
-    }
-  } else if (request.action === "set-webcam") {
+    startRecording(request).then(
+      () => sendResponse({ success: true }),
+      (error) => {
+        // User dismissing the screen picker is expected, not a failure.
+        const cancelled = error.name === "NotAllowedError";
+        if (!cancelled) {
+          console.error("Offscreen recording error:", error.name, error.message);
+        }
+        sendResponse({
+          success: false,
+          cancelled,
+          error: error.message || String(error),
+        });
+      },
+    );
+    return true;
+  }
+
+  if (request.action === "stop-recording") {
+    stopRecording().then(
+      () => sendResponse({ success: true }),
+      (error) => {
+        console.error("Offscreen stop error:", error);
+        sendResponse({ success: false, error: error.message });
+      },
+    );
+    return true;
+  }
+
+  if (request.action === "set-webcam") {
     // Live toggle during a recording.
     setWebcam(request.enabled).catch((e) =>
       console.error("set-webcam failed:", e),
     );
     sendResponse({ success: true });
-  } else if (request.action === "set-corner") {
-    corner = request.corner || corner;
-    sendResponse({ success: true });
+    return false;
   }
+
+  // set-corner
+  corner = request.corner || corner;
+  sendResponse({ success: true });
+  return false;
 });
 
 // --- Helpers ---------------------------------------------------------------
@@ -397,7 +433,9 @@ async function saveRecording() {
     chunks = [];
 
     // Notify background script that recording is complete
-    chrome.runtime.sendMessage({ action: "recording-complete" });
+    chrome.runtime
+      .sendMessage({ target: "background", action: "recording-complete" })
+      .catch(() => {}); // worker may be spinning up; state also self-heals
   } catch (error) {
     console.error("Failed to save recording:", error);
     throw error;

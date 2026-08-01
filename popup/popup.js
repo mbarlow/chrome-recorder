@@ -36,20 +36,29 @@ async function handleToggle() {
 }
 
 async function updateStatus() {
+  let status;
   try {
-    const status = await chrome.runtime.sendMessage({
-      action: "get-status",
-    });
-    if (status && status.isRecording) {
-      showRecording(status.recordingStartTime);
-    } else {
-      showIdle();
-    }
-    renderWebcam(status || {});
+    status = await chrome.runtime.sendMessage({ action: "get-status" });
   } catch (error) {
-    console.error("Error getting status:", error);
+    // The worker may be spinning back up, or the port closed mid-flight.
+    // Do NOT paint "Ready" here — a failed poll is not evidence that the
+    // recording ended, and doing so is what made the popup flip between
+    // Recording and Ready a second after opening. Keep the last known state
+    // and let the next tick (1s) correct it.
+    console.warn("Status poll failed, keeping last known state:", error);
+    return;
+  }
+
+  // Same reasoning for a null/undefined reply: that's a messaging artifact,
+  // not a state reading.
+  if (!status) return;
+
+  if (status.isRecording) {
+    showRecording(status.recordingStartTime);
+  } else {
     showIdle();
   }
+  renderWebcam(status);
 }
 
 // Reflect webcam settings (kept in sync so keyboard-shortcut changes show up
