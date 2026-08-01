@@ -1,6 +1,6 @@
 {
   "name": "Chrome Recorder",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "manifest_version": 3,
   "description": "Record active browser tab or screen as WebM video, with optional webcam picture-in-picture overlay",
   "permissions": [
