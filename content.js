@@ -43,6 +43,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function showRecordingIndicator() {
   hideRecordingIndicator();
 
+  // This script runs at document_start, so document.body can still be null
+  // when a status check comes back early — appendChild would throw and the
+  // indicator would silently never appear on that page. Wait for the body.
+  if (!document.body) {
+    document.addEventListener("DOMContentLoaded", () => showRecordingIndicator(), {
+      once: true,
+    });
+    return;
+  }
+
   recordingIndicator = document.createElement("div");
   recordingIndicator.id = "chrome-recorder-indicator";
 
@@ -168,16 +178,33 @@ window.addEventListener("beforeunload", () => {
   hideRecordingIndicator();
 });
 
-if (extensionAlive()) {
+// Ask the background whether a recording is in progress and match the pill to
+// the answer. A null reply means the message didn't reach the background, not
+// that recording stopped, so leave the indicator alone in that case.
+function syncIndicator() {
+  if (!extensionAlive()) return;
   chrome.runtime
     .sendMessage({ action: "get-status" })
     .then((status) => {
-      if (status && status.isRecording) {
-        showRecordingIndicator();
+      if (!status) return; // messaging artifact — not a state reading
+      if (status.isRecording) {
+        if (!recordingIndicator) showRecordingIndicator();
         isRecording = true;
+      } else {
+        hideRecordingIndicator();
+        isRecording = false;
       }
     })
     .catch(() => {});
 }
+
+syncIndicator();
+
+// The background only messages the tab that was active when recording started,
+// so tabs opened or focused later never heard about it. Re-check on focus:
+// switching to a tab is the moment its indicator needs to be right.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") syncIndicator();
+});
 
 } // end __chromeRecorderInjected guard

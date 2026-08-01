@@ -14,6 +14,7 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log("Chrome Recorder extension installed");
   chrome.storage.local.set({
     isRecording: false,
+    isStarting: false,
     recordingStartTime: null,
     currentTabId: null,
     // Webcam overlay settings persist across recordings.
@@ -27,6 +28,7 @@ chrome.runtime.onInstalled.addListener(() => {
 async function getState() {
   const s = await chrome.storage.local.get([
     "isRecording",
+    "isStarting",
     "recordingStartTime",
     "currentTabId",
     "webcamEnabled",
@@ -34,6 +36,7 @@ async function getState() {
   ]);
   return {
     isRecording: !!s.isRecording,
+    isStarting: !!s.isStarting,
     recordingStartTime: s.recordingStartTime ?? null,
     currentTabId: s.currentTabId ?? null,
     webcamEnabled: !!s.webcamEnabled,
@@ -45,11 +48,18 @@ async function setState(patch) {
   await chrome.storage.local.set(patch);
 }
 
+// Every message we send to the offscreen document carries target:"offscreen"
+// so that document can ignore traffic meant for us (see offscreen.js — an
+// unfiltered listener there answers get-status with null and breaks the UI).
+function toOffscreen(message) {
+  return chrome.runtime.sendMessage({ ...message, target: "offscreen" });
+}
+
 // Relay a message to the offscreen document. No-op (swallowed) when no
 // offscreen doc / popup is listening — used for live overlay tweaks.
 async function relayToOffscreen(message) {
   try {
-    await chrome.runtime.sendMessage(message);
+    await toOffscreen(message);
   } catch (e) {
     // No receiving end (not recording, or popup closed) — nothing to update.
   }
@@ -83,12 +93,22 @@ async function cycleCorner() {
 
 async function startRecording() {
   // Already running (e.g. worker was respawned and the shortcut/popup fired a
-  // duplicate start) — ignore so we never open a second capture.
-  const { isRecording } = await getState();
-  if (isRecording) {
+  // duplicate start) — ignore so we never open a second capture. `isStarting`
+  // covers the gap while the screen picker is up: isRecording isn't true yet,
+  // so without it a second shortcut press opens a second picker.
+  const { isRecording, isStarting } = await getState();
+  if (isRecording || isStarting) {
     return;
   }
+  await setState({ isStarting: true });
+  try {
+    await startRecordingInner();
+  } finally {
+    await setState({ isStarting: false });
+  }
+}
 
+async function startRecordingInner() {
   // Get current active tab
   const [activeTab] = await chrome.tabs.query({
     active: true,
@@ -117,7 +137,7 @@ async function startRecording() {
   // Send message to offscreen document to start recording, seeding the
   // current webcam overlay settings.
   const { webcamEnabled, webcamCorner } = await getState();
-  const response = await chrome.runtime.sendMessage({
+  const response = await toOffscreen({
     action: "start-recording",
     tabId: activeTab.id,
     webcamEnabled,
@@ -173,10 +193,19 @@ async function startRecording() {
 async function stopRecording() {
   const { currentTabId } = await getState();
 
-  // Send message to offscreen document to stop recording
-  await chrome.runtime.sendMessage({
-    action: "stop-recording",
-  });
+  // Ask the offscreen document to stop. This MUST NOT be able to abort the
+  // rest of the function: if the offscreen document is gone (crashed, already
+  // torn down, worker respawned mid-teardown) the send rejects with "Receiving
+  // end does not exist", and an uncaught rejection here used to leave
+  // isRecording stuck true forever — badge pinned to REC, and every later stop
+  // attempt failing the same way. Stopping the UI state is unconditional.
+  try {
+    await toOffscreen({ action: "stop-recording" });
+  } catch (e) {
+    console.warn("Offscreen document not reachable on stop:", e.message);
+    // Nothing is capturing; make sure no orphan document lingers.
+    await closeOffscreenDocument();
+  }
 
   // Notify content script if possible (async rejection — catch on promise).
   if (currentTabId) {
@@ -189,6 +218,7 @@ async function stopRecording() {
   // download is committed (recording-complete).
   await setState({
     isRecording: false,
+    isStarting: false,
     recordingStartTime: null,
     currentTabId: null,
   });
@@ -250,6 +280,9 @@ async function toggleRecording() {
 // --- Messaging -------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Traffic addressed to the offscreen document is none of our business.
+  if (request?.target === "offscreen") return false;
+
   if (request.action === "get-status") {
     getState().then((state) => sendResponse(state));
     return true; // async read from storage
@@ -283,6 +316,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         return setState({
           isRecording: false,
+          isStarting: false,
           recordingStartTime: null,
           currentTabId: null,
         });
@@ -291,7 +325,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Download is already committed by the click(); safe to tear down now.
     closeOffscreenDocument();
     sendResponse({ success: true });
+    return false;
   }
+
+  return false;
 });
 
 // Keyboard shortcuts (configurable at chrome://extensions/shortcuts).
@@ -311,11 +348,15 @@ if (chrome.commands) {
   });
 }
 
-// Clean up on extension shutdown
-chrome.runtime.onSuspend.addListener(() => {
-  getState().then(({ isRecording }) => {
-    if (isRecording) {
-      stopRecording();
-    }
-  });
-});
+// NOTE: there is deliberately no chrome.runtime.onSuspend handler here.
+//
+// MV3 suspends this worker after ~30s idle, which during a recording is the
+// normal case — nothing keeps the worker alive while the offscreen document
+// captures. An onSuspend handler that called stopRecording() therefore ended
+// the user's recording on a timer: it messaged the offscreen document to stop
+// and save, cleared the badge, and hid the on-page indicator. Routine worker
+// recycling is not a signal that the user wants to stop.
+//
+// Recording state lives in chrome.storage.local and the capture lives in the
+// offscreen document, so both survive suspension. The worker respawns on the
+// next message and reads the truth back out of storage.
